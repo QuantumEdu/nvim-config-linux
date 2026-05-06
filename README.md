@@ -21,6 +21,7 @@ Configuracion completa del entorno de desarrollo en Linux Ubuntu 26.04 (WSL2). B
 | Diffs | delta | 0.19.2 | Diffs de Git mejorados |
 | Markdown | glow | 2.1.2 | Visor de Markdown en terminal |
 | Git TUI | lazygit | 0.61.1 | Operaciones Git interactivas |
+| Docker TUI | lazydocker | 0.25.2 | Gestion de contenedores Docker |
 | Git | git | 2.54.0 | Control de versiones |
 | Terminal | Ghostty | 1.3.1 | Terminal GPU-accelerated |
 | Multiplexor | Tmux | 3.6 | Sesiones, paneles, persistencia |
@@ -57,6 +58,24 @@ Configuracion completa del entorno de desarrollo en Linux Ubuntu 26.04 (WSL2). B
 | `lt` | Arbol de directorio `eza --tree --level=2 --icons` |
 | `mdv <archivo>` | Ver Markdown con `glow` |
 | `z <proyecto>` | Saltar a carpeta frecuente con `zoxide` |
+
+### Buscadores vs Exploradores
+
+| Tipo | Herramienta | Como se usa |
+|------|-------------|-------------|
+| **Finder** | `ff` (shell) | `fd + fzf` → busca archivo y abre en Neovim |
+| **Finder** | `ffg <patron>` (shell) | `rg + fzf` → busca texto y abre en Neovim en la linea |
+| **Finder** | `<leader>tf` (nvim) | Buscar archivos dentro de Neovim |
+| **Finder** | `<leader>tg` (nvim) | Buscar texto dentro de Neovim |
+| **Explorador** | `oil.nvim` (nvim) | `-` en modo normal, edita el sistema de archivos como buffer |
+| **Explorador** | `mini-files` (nvim) | Via LazyVim extra, explorador de archivos |
+
+### TUIs de gestion
+
+| Herramienta | Comando | Uso |
+|-------------|---------|-----|
+| **lazygit** | `lazygit` o `lg` | Operaciones Git: stage, commit, push, branches, diffs |
+| **lazydocker** | `lazydocker` | Contenedores, imagenes, logs, stats |
 
 ## Terminal: Ghostty
 
@@ -212,8 +231,9 @@ ffg patron                # buscar texto -> abrir en linea
 # Abrir proyecto
 nvim .                    # Neovim en raiz del proyecto
 
-# Git
-lg                        # lazygit
+# Git / Docker
+lazygit                   # TUI para Git
+lazydocker                # TUI para Docker
 git diff                  # diff con delta
 
 # Markdown
@@ -230,7 +250,7 @@ tmux                      # arranca automatico al abrir fish
 git clone https://github.com/QuantumEdu/nvim-config-linux.git ~/.config/nvim
 
 # Instalar herramientas CLI (requiere Homebrew)
-brew install fish starship atuin fzf fd ripgrep bat eza git-delta glow lazygit zellij
+brew install fish starship atuin fzf fd ripgrep bat eza git-delta glow lazygit lazydocker zellij
 
 # Iniciar Neovim (LazyVim se instala automaticamente)
 nvim +Lazy sync +qa
