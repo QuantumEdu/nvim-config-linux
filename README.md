@@ -84,35 +84,51 @@ Terminal moderna con aceleracion GPU, soporte nativo para ligatures, Nerd Fonts 
 - **Fuente**: CaskaydiaCove Nerd Font (u otra Nerd Font)
 - **Tema**: configurado via `~/.config/ghostty/config`
 
-## Shell: Fish + Zellij — Fix de loop infinito
+## Shell: Fish + Zellij — Fixes
 
-Con Zellij 0.44.2 y Fish, la configuracion tipica:
+### Fix 1: Loop infinito al abrir terminales nuevos
 
-```fish
-exec zellij attach --create
-```
+Con Zellij 0.44.2 y Fish, la configuracion tipica `exec zellij attach --create` puede causar un **loop infinito** (Zellij no exporta `ZELLIJ_SESSION_NAME` correctamente en algunos paneles).
 
-...puede causar un **loop infinito** al abrir terminales nuevos (Zellij no exporta `ZELLIJ_SESSION_NAME` correctamente en algunos paneles, y Fish vuelve a lanzar `exec zellij` sin parar).
-
-**Fix aplicado en `~/.config/fish/config.fish`:**
+**Solucion:** Verificar el arbol de procesos:
 
 ```fish
-# Start zellij only if interactive, has TTY, and not already inside zellij
-if status is-interactive
-    if test -t 0; and not set -q ZELLIJ; and not set -q ZELLIJ_SESSION_NAME
-        # Fallback: check the process tree to prevent infinite loops
-        # when zellij doesn't export env vars correctly
-        set -l fish_pid_var (echo $fish_pid 2>/dev/null; or echo %self)
-        set -l parent_pid (ps -o ppid= -p $fish_pid_var 2>/dev/null | string trim)
-        set -l parent_name (ps -o comm= -p $parent_pid 2>/dev/null | string trim)
-        if test "$parent_name" != "zellij"
-            exec zellij attach --create
-        end
-    end
+set -l parent_name (ps -o comm= -p $parent_pid 2>/dev/null | string trim)
+if test "$parent_name" != "zellij"
+    exec zellij attach --create
 end
 ```
 
-**Como funciona:** Si las variables de entorno de Zellij no estan seteadas, Fish verifica "¿mi proceso padre es zellij?". Si es asi, **no** vuelve a ejecutar `exec zellij`, rompiendo el loop.
+### Fix 2: Hang al hacer `exit` de fish en terminales como Warp
+
+**Contexto:** Si abris un terminal que usa **bash** como shell por defecto (como Warp, o muchos emuladores por defecto) y ejecutas `fish` manualmente, fish lee `config.fish` y hace `exec zellij attach --create`. El `exec` **reemplaza** fish con zellij, lo cual **rompe la integracion** de terminales modernas como Warp que necesitan trackear el proceso shell activo.
+
+**Resultado:** Al hacer `exit` dentro de zellij, la terminal se queda colgada porque Warp pierde el control del shell session.
+
+**Solucion:** Detectar si fish fue invocado manualmente desde otro shell (bash, sh, zsh, dash) y **omitir** zellij en ese caso:
+
+```fish
+set -l shell_parents bash sh zsh dash
+set -l is_nested_shell 0
+for shell in $shell_parents
+    if test "$parent_name" = "$shell"
+        set is_nested_shell 1
+        break
+    end
+end
+
+if test "$parent_name" != "zellij"; and test $is_nested_shell -eq 0
+    exec zellij attach --create
+end
+```
+
+**Comportamiento esperado:**
+
+| Escenario | ¿Lanza zellij? | Razon |
+|-----------|---------------|-------|
+| Terminal nuevo con Fish como shell por defecto | ✅ Si | Fish es la shell principal del emulador |
+| `fish` ejecutado manualmente desde bash/zsh | ❌ No | Evita `exec` que rompe integraciones de la terminal |
+| Dentro de paneles de zellij | ❌ No | Ya detectado por `ZELLIJ_SESSION_NAME` o parent = zellij |
 
 ---
 
