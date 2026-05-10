@@ -84,6 +84,38 @@ Terminal moderna con aceleracion GPU, soporte nativo para ligatures, Nerd Fonts 
 - **Fuente**: CaskaydiaCove Nerd Font (u otra Nerd Font)
 - **Tema**: configurado via `~/.config/ghostty/config`
 
+## Shell: Fish + Zellij — Fix de loop infinito
+
+Con Zellij 0.44.2 y Fish, la configuracion tipica:
+
+```fish
+exec zellij attach --create
+```
+
+...puede causar un **loop infinito** al abrir terminales nuevos (Zellij no exporta `ZELLIJ_SESSION_NAME` correctamente en algunos paneles, y Fish vuelve a lanzar `exec zellij` sin parar).
+
+**Fix aplicado en `~/.config/fish/config.fish`:**
+
+```fish
+# Start zellij only if interactive, has TTY, and not already inside zellij
+if status is-interactive
+    if test -t 0; and not set -q ZELLIJ; and not set -q ZELLIJ_SESSION_NAME
+        # Fallback: check the process tree to prevent infinite loops
+        # when zellij doesn't export env vars correctly
+        set -l fish_pid_var (echo $fish_pid 2>/dev/null; or echo %self)
+        set -l parent_pid (ps -o ppid= -p $fish_pid_var 2>/dev/null | string trim)
+        set -l parent_name (ps -o comm= -p $parent_pid 2>/dev/null | string trim)
+        if test "$parent_name" != "zellij"
+            exec zellij attach --create
+        end
+    end
+end
+```
+
+**Como funciona:** Si las variables de entorno de Zellij no estan seteadas, Fish verifica "¿mi proceso padre es zellij?". Si es asi, **no** vuelve a ejecutar `exec zellij`, rompiendo el loop.
+
+---
+
 ## Multiplexores
 
 ### Tmux
@@ -190,15 +222,37 @@ Plugins: `zjstatus` (barra de estado), `zellij_forgot` (recordatorios)
 
 ## AI / LLM
 
-| Herramienta | Ubicacion | Estado |
-|-------------|-----------|--------|
-| **opencode** | `~/.config/opencode/` | CLI principal |
-| **engram** | Brew | Memoria persistente |
-| **copilot.vim** | Plugin Neovim | Completado inline |
-| **claude-code.nvim** | Plugin Neovim | Claude Code |
-| **code-companion.nvim** | Plugin Neovim | LLM multi-modelo |
-| **github-copilot** | `~/.config/github-copilot/` | CLI |
-| **gentle-ai** | Brew | Configurado |
+| Herramienta | Ubicacion | Estado | Version |
+|-------------|-----------|--------|---------|
+| **opencode** | `~/.config/opencode/` | CLI principal (via gentle-ai) | — |
+| **engram** | Brew | Memoria persistente | **1.15.10** |
+| **copilot.vim** | Plugin Neovim | Completado inline | — |
+| **claude-code.nvim** | Plugin Neovim | Claude Code | — |
+| **code-companion.nvim** | Plugin Neovim | LLM multi-modelo | — |
+| **github-copilot** | `~/.config/github-copilot/` | CLI | — |
+| **gentle-ai** | Brew | Configurado | **1.26.6** |
+
+### Agentes configurados via gentle-ai
+
+| Agente | Estado | Notas |
+|--------|--------|-------|
+| **OpenCode** | ✅ Activo | Plugin + MCP server instalados. Perfil SDD `gentle-orchestrator` listo. |
+| **Codex** | ✅ Activo | Plugin + MCP server instalados en `~/.codex`. |
+| **Claude Code** | ✅ Activo | Preexistente, sincronizado con gentle-ai. |
+| **Kilo Code** | ❌ N/A | No soportado aun en la version MVP de gentle-ai. |
+
+### Comandos post-instalacion
+
+```bash
+# Iniciar servidor de memoria persistente (engram)
+engram serve &
+
+# Dentro de cualquier proyecto con OpenCode:
+/sdd-init          # Detecta stack, testing, activa Strict TDD si aplica
+skill-registry     # Genera el catalogo de skills para el proyecto
+```
+
+En OpenCode, presionar **Tab** cambia entre el perfil SDD default (`gentle-orchestrator`) y perfiles personalizados.
 
 ## Git
 
