@@ -1,6 +1,6 @@
 # nvim-config-linux
 
-Configuracion completa del entorno de desarrollo en Linux Ubuntu 26.04 (WSL2). Basado en **Neovim/LazyVim**, **Fish**, **Tmux**, **Zellij** y herramientas CLI modernas.
+Configuracion completa del entorno de desarrollo en Linux Ubuntu 26.04 (WSL2). Basado en **Neovim/LazyVim**, **Fish**, **Tmux + TPM** y herramientas CLI modernas. Zellij disponible como alternativa.
 
 ## Stack del ecosistema
 
@@ -24,8 +24,8 @@ Configuracion completa del entorno de desarrollo en Linux Ubuntu 26.04 (WSL2). B
 | Docker TUI | lazydocker | 0.25.2 | Gestion de contenedores Docker |
 | Git | git | 2.54.0 | Control de versiones |
 | Terminal | Ghostty | 1.3.1 | Terminal GPU-accelerated |
-| Multiplexor | Tmux | 3.6 | Sesiones, paneles, persistencia |
-| Multiplexor | Zellij | 0.44.2 | Alternativa moderna a Tmux |
+| Multiplexor | **Tmux + TPM** | 3.6 | Sesiones, paneles, persistencia, plugins |
+| Multiplexor (alt) | Zellij | 0.44.2 | Alternativa moderna (deshabilitado por defecto) |
 | Editor | Neovim | 0.12.2 | Editor modal |
 | Distribucion | LazyVim | v8 | LSP, Treesitter, pickers |
 
@@ -84,73 +84,55 @@ Terminal moderna con aceleracion GPU, soporte nativo para ligatures, Nerd Fonts 
 - **Fuente**: CaskaydiaCove Nerd Font (u otra Nerd Font)
 - **Tema**: configurado via `~/.config/ghostty/config`
 
-## Shell: Fish + Zellij — Fixes
+## Shell: Fish + Tmux (principal)
 
-### Fix 1: Loop infinito al abrir terminales nuevos
+### Filosofia
 
-Con Zellij 0.44.2 y Fish, la configuracion tipica `exec zellij attach --create` puede causar un **loop infinito** (Zellij no exporta `ZELLIJ_SESSION_NAME` correctamente en algunos paneles).
+El stack utiliza **Tmux + TPM** como multiplexor principal. Zellij queda disponible como alternativa manual pero **no se auto-lanza** para evitar problemas de compatibilidad con terminales que trackean el proceso shell (Warp, Windows Terminal, etc.).
 
-**Solucion:** Verificar el arbol de procesos:
+Fish es el shell por defecto. Se recomienda ejecutar:
 
-```fish
-set -l parent_name (ps -o comm= -p $parent_pid 2>/dev/null | string trim)
-if test "$parent_name" != "zellij"
-    exec zellij attach --create
-end
+```bash
+chsh -s $(which fish)
 ```
 
-### Fix 2: Hang al hacer `exit` de fish en terminales como Warp
+Esto elimina la capa de bash intermedia y evita:
+- Loop infinitos con `exec`
+- Warnings de VT100 Primary Device Attribute query
+- Hangs al hacer `exit` en terminales modernas
 
-**Contexto:** Si abris un terminal que usa **bash** como shell por defecto (como Warp, o muchos emuladores por defecto) y ejecutas `fish` manualmente, fish lee `config.fish` y hace `exec zellij attach --create`. El `exec` **reemplaza** fish con zellij, lo cual **rompe la integracion** de terminales modernas como Warp que necesitan trackear el proceso shell activo.
+### Auto-start de Tmux
 
-**Resultado:** Al hacer `exit` dentro de zellij, la terminal se queda colgada porque Warp pierde el control del shell session.
-
-**Solucion:** Detectar si fish fue invocado manualmente desde otro shell (bash, sh, zsh, dash) y **omitir** zellij en ese caso:
+En `config.fish`, tmux se auto-lanza **solo** cuando fish es la shell principal (no cuando se ejecuta manualmente desde bash/zsh):
 
 ```fish
-set -l shell_parents bash sh zsh dash
-set -l is_nested_shell 0
-for shell in $shell_parents
-    if test "$parent_name" = "$shell"
-        set is_nested_shell 1
-        break
+if status is-interactive
+    if test -t 0; and not set -q TMUX; and not set -q ZELLIJ; and not set -q ZELLIJ_SESSION_NAME
+        # Check if fish was invoked manually from another shell
+        set -l parent_name (ps -o comm= -p (ps -o ppid= -p $fish_pid | string trim) | string trim)
+        set -l shell_parents bash sh zsh dash
+        set -l is_nested_shell 0
+        for shell in $shell_parents
+            if test "$parent_name" = "$shell"
+                set is_nested_shell 1
+                break
+            end
+        end
+        # Only auto-start tmux when fish is the top-level shell
+        if test $is_nested_shell -eq 0
+            tmux new-session -A -s main
+        end
     end
-end
-
-if test "$parent_name" != "zellij"; and test $is_nested_shell -eq 0
-    exec zellij attach --create
 end
 ```
 
 **Comportamiento esperado:**
 
-| Escenario | ¿Lanza zellij? | Razon |
-|-----------|---------------|-------|
-| Terminal nuevo con Fish como shell por defecto | ✅ Si | Fish es la shell principal del emulador |
-| `fish` ejecutado manualmente desde bash/zsh | ❌ No | Evita `exec` que rompe integraciones de la terminal |
-| Dentro de paneles de zellij | ❌ No | Ya detectado por `ZELLIJ_SESSION_NAME` o parent = zellij |
-
-### Fix 3: Warning `Primary Device Attribute query` en Warp (y terminales que no responden VT100)
-
-**Sintoma:** Al ejecutar `fish` manualmente desde bash en Warp, aparece:
-```
-warning: fish could not read response to Primary Device Attribute query...
-```
-y fish tarda ~10s en arrancar, perdiendo colores 24-bit y features de terminal.
-
-**Causa:** Fish consulta al terminal qué features soporta. Warp (y otros emuladores) no responden correctamente cuando fish es invocado anidado (no como shell principal).
-
-**Solucion:** Forzar las capabilities en `config.fish` cuando se detecta Warp:
-
-```fish
-if status is-interactive
-    if test -n "$WARP_BOOTSTRAPPED"; or test -n "$WARP_USE_SSH_WRAPPER"
-        set -g fish_term24bit 1
-        set -g fish_ambiguous_width 1
-        set -g fish_emoji_width 2
-    end
-end
-```
+| Escenario | ¿Lanza tmux? | Razon |
+|-----------|-------------|-------|
+| Terminal nuevo, Fish = shell por defecto | ✅ Si | Fish es la shell principal |
+| `fish` ejecutado manualmente desde bash/zsh | ❌ No | Evita doble prompt y confusion |
+| Dentro de paneles de tmux | ❌ No | Ya detectado por variable `TMUX` |
 
 ---
 
@@ -172,9 +154,9 @@ Plugins via TPM (`~/.tmux/plugins/`):
 
 Shell por defecto: Fish
 
-### Zellij
+### Zellij (Alternativa)
 
-Alternativa moderna con layouts predefinidos:
+Zellij queda disponible como alternativa manual cuando se necesitan layouts predefinidos:
 
 | Layout | Descripcion |
 |--------|-------------|
@@ -185,6 +167,8 @@ Alternativa moderna con layouts predefinidos:
 | `work_oldWorld` | Tema Old World |
 
 Plugins: `zjstatus` (barra de estado), `zellij_forgot` (recordatorios)
+
+**Nota:** Zellij **no se auto-lanza** en `config.fish` para evitar problemas de compatibilidad con terminales modernas. Se puede ejecutar manualmente con `zellij` cuando se necesite.
 
 ## Editor: Neovim + LazyVim
 
@@ -332,7 +316,7 @@ git diff                  # diff con delta
 mdv README.md             # ver con glow
 
 # Multiplexor
-tmux                      # arranca automatico al abrir fish
+tmux                      # arranca automatico al abrir fish (si es shell principal)
 ```
 
 ## Instalacion
@@ -342,7 +326,14 @@ tmux                      # arranca automatico al abrir fish
 git clone https://github.com/QuantumEdu/nvim-config-linux.git ~/.config/nvim
 
 # Instalar herramientas CLI (requiere Homebrew)
-brew install fish starship atuin fzf fd ripgrep bat eza git-delta glow lazygit lazydocker zellij
+brew install fish starship atuin fzf fd ripgrep bat eza git-delta glow lazygit lazydocker tmux zellij
+
+# Configurar Fish como shell por defecto (evita problemas VT100/Warp)
+echo /home/linuxbrew/.linuxbrew/bin/fish | sudo tee -a /etc/shells
+chsh -s /home/linuxbrew/.linuxbrew/bin/fish
+
+# Instalar TPM (Tmux Plugin Manager)
+git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
 
 # Iniciar Neovim (LazyVim se instala automaticamente)
 nvim +Lazy sync +qa
