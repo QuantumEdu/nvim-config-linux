@@ -130,6 +130,28 @@ end
 | `fish` ejecutado manualmente desde bash/zsh | ❌ No | Evita `exec` que rompe integraciones de la terminal |
 | Dentro de paneles de zellij | ❌ No | Ya detectado por `ZELLIJ_SESSION_NAME` o parent = zellij |
 
+### Fix 3: Warning `Primary Device Attribute query` en Warp (y terminales que no responden VT100)
+
+**Sintoma:** Al ejecutar `fish` manualmente desde bash en Warp, aparece:
+```
+warning: fish could not read response to Primary Device Attribute query...
+```
+y fish tarda ~10s en arrancar, perdiendo colores 24-bit y features de terminal.
+
+**Causa:** Fish consulta al terminal qué features soporta. Warp (y otros emuladores) no responden correctamente cuando fish es invocado anidado (no como shell principal).
+
+**Solucion:** Forzar las capabilities en `config.fish` cuando se detecta Warp:
+
+```fish
+if status is-interactive
+    if test -n "$WARP_BOOTSTRAPPED"; or test -n "$WARP_USE_SSH_WRAPPER"
+        set -g fish_term24bit 1
+        set -g fish_ambiguous_width 1
+        set -g fish_emoji_width 2
+    end
+end
+```
+
 ---
 
 ## Multiplexores
